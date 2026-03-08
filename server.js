@@ -278,7 +278,7 @@ async function handleAiFill(request, response) {
   const systemPrompt = [
     "You fill MP3 release metadata for an audio publishing workflow.",
     "Return only valid JSON.",
-    "IMPORTANT: The artist is ALWAYS 'The Ravonix and Voltaris'. Never change artist, composer, lyricist, producer, label, or copyright — they must all be 'The Ravonix and Voltaris'.",
+    "IMPORTANT: The artist is ALWAYS 'The Ravonix & Voltaris'. Never change artist, composer, lyricist, producer, label, or copyright — they must all be 'The Ravonix & Voltaris'.",
     "IMPORTANT: You MUST always generate a creative, catchy, unique song title that matches the musical style/genre/mood. Never leave title empty or as 'Untitled'. Invent an original name.",
     "Keep other existing values if they are already present and stronger than guesses.",
     "Return this object shape: { fields: { title, version, artist, featured-artists, album, release-type, genres, subgenre, mood, language, bpm, key, label, composer, lyricist, producer, isrc, upc, year, copyright, tags, short-description, description, marketing-hook, distribution-notes } }.",
@@ -495,7 +495,7 @@ function buildMp3FromBody(body) {
   const metadata = Object.assign({}, body.metadata || {});
 
   if (!metadata.artist) {
-    metadata.artist = "The Ravonix and Voltaris";
+    metadata.artist = "The Ravonix & Voltaris";
   }
 
   console.log("[transcode] cover:", body.cover ? `yes (${(body.cover.dataBase64 || "").length} chars base64, mime=${body.cover.mimeType})` : "no");
@@ -574,7 +574,7 @@ async function handleSendTelegram(request, response) {
   if (body.metadata?.artist) {
     audioForm.set("performer", String(body.metadata.artist).slice(0, 200));
   } else {
-    audioForm.set("performer", "The Ravonix and Voltaris");
+    audioForm.set("performer", "The Ravonix & Voltaris");
   }
 
   await telegramRequest("sendAudio", audioForm);

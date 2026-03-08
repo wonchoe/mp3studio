@@ -35,7 +35,7 @@ const state = {
 
 const ZOOM_SLIDER_MAX = 1000;
 const DEFAULT_RELEASE_YEAR = String(new Date().getFullYear());
-const DEFAULT_ARTIST = "The Ravonix and Voltaris";
+const DEFAULT_ARTIST = "The Ravonix & Voltaris";
 const DEFAULT_COPYRIGHT = DEFAULT_ARTIST;
 const LOCKED_META_DEFAULTS = {
   artist: DEFAULT_ARTIST,
