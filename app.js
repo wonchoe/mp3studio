@@ -222,6 +222,16 @@ function enforceMetaDefaults() {
   }
 }
 
+function enforceMetaDefaultsAfterRestore() {
+  const refreshLockedFields = () => {
+    enforceMetaDefaults();
+    updateMetaPayloadPreview("Заповни поля або завантаж файли, щоб зібрати payload.");
+  };
+
+  requestAnimationFrame(refreshLockedFields);
+  window.setTimeout(refreshLockedFields, 150);
+}
+
 function getStylePresetConfig(presetKey) {
   if (!presetKey || presetKey === "custom") {
     return null;
@@ -1949,6 +1959,7 @@ function bindStudioWorkspace() {
 function bindGlobalEvents() {
   window.addEventListener("resize", requestRender);
   window.addEventListener("resize", updateNormalizationUi);
+  window.addEventListener("pageshow", enforceMetaDefaultsAfterRestore);
   window.addEventListener("keydown", (event) => {
     if (event.code === "Space" || event.key === " ") {
       handleSpaceShortcut(event);
@@ -1974,6 +1985,7 @@ function init() {
   updateProjectStats();
   updateMetaStatsView();
   updateMetaPayloadPreview("Заповни поля або завантаж файли, щоб зібрати payload.");
+  enforceMetaDefaultsAfterRestore();
   requestRender();
 }
 
