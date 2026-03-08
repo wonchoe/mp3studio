@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MP3 Suite</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand-lockup">
+        <div class="brand-mark"><i class="fa-solid fa-wave-square"></i></div>
+        <div>
+          <p class="eyebrow">Audio Control Surface</p>
+          <h1>MP3 Suite</h1>
+        </div>
+      </div>
+      <div class="topbar-note compact-pill">
+        <i class="fa-solid fa-sparkles"></i>
+        <span>AI metadata + cheap cover generation + studio preview</span>
+      </div>
+    </header>
+
+    <main class="main-shell">
+      <section id="home-view" class="view is-active">
+        <div class="hero-grid compact-hero-grid">
+          <section class="hero-card panel compact-panel">
+            <p class="eyebrow">Start Here</p>
+            <h2>Обери режим роботи</h2>
+            <p class="hero-copy">Компактний вхід у два режими: релізна мета-панель з AI-заповненням і cover generation, або студійний перегляд треків із waveform і zoom.</p>
+            <div class="hero-points compact-points">
+              <span><i class="fa-solid fa-robot"></i> AI autofill</span>
+              <span><i class="fa-solid fa-image"></i> Cover generation</span>
+              <span><i class="fa-solid fa-wave-square"></i> Studio timeline</span>
+            </div>
+          </section>
+
+          <section class="hero-side panel compact-panel">
+            <p class="eyebrow">Flow</p>
+            <ol class="flow-list compact-flow">
+              <li>Завантаж аудіо і вкажи стиль.</li>
+              <li>AI заповнить максимум релізних полів і може згенерувати cover.</li>
+              <li>Перевір трек у студії й відправ готовий payload на API.</li>
+            </ol>
+          </section>
+        </div>
+
+        <section class="card-grid compact-card-grid">
+          <article class="workspace-card panel compact-panel" data-open-mode="meta">
+            <div class="card-icon warm"><i class="fa-solid fa-compact-disc"></i></div>
+            <div class="card-copy">
+              <p class="eyebrow">Card 01</p>
+              <h3>MP3 Meta</h3>
+              <p>Повна картка треку: metadata, normalize, AI-fill, cover generation і API handoff.</p>
+            </div>
+            <ul class="card-list compact-list">
+              <li><i class="fa-solid fa-tags"></i> Rich release fields</li>
+              <li><i class="fa-solid fa-wand-magic-sparkles"></i> Auto-generated metadata</li>
+              <li><i class="fa-solid fa-cloud-arrow-up"></i> Multipart API submit</li>
+            </ul>
+            <button class="card-cta" type="button">
+              <span>Відкрити MP3 Meta</span>
+              <i class="fa-solid fa-arrow-right"></i>
+            </button>
+          </article>
+
+          <article class="workspace-card panel compact-panel" data-open-mode="studio">
+            <div class="card-icon cool"><i class="fa-solid fa-sliders"></i></div>
+            <div class="card-copy">
+              <p class="eyebrow">Card 02</p>
+              <h3>MP3 Studio</h3>
+              <p>Waveform preview, zoom, transport і багатодоріжковий контроль для швидкої технічної перевірки.</p>
+            </div>
+            <ul class="card-list compact-list">
+              <li><i class="fa-solid fa-magnifying-glass-plus"></i> Deep zoom</li>
+              <li><i class="fa-solid fa-play"></i> Transport controls</li>
+              <li><i class="fa-solid fa-ruler"></i> Millisecond ruler</li>
+            </ul>
+            <button class="card-cta" type="button">
+              <span>Відкрити MP3 Studio</span>
+              <i class="fa-solid fa-arrow-right"></i>
+            </button>
+          </article>
+        </section>
+      </section>
+
+      <section id="meta-view" class="view workspace-view">
+        <div class="workspace-head panel shallow compact-panel">
+          <button class="back-button" type="button" data-back-home>
+            <i class="fa-solid fa-arrow-left"></i>
+            <span>Назад</span>
+          </button>
+          <div>
+            <p class="eyebrow">Workspace</p>
+            <h2>MP3 Meta</h2>
+          </div>
+          <p class="workspace-summary">Компактна панель для релізної картки треку, AI-заповнення і генерації cover через локальний проксі.</p>
+        </div>
+
+        <div class="meta-grid dense-meta-grid">
+          <section class="panel meta-panel compact-panel side-panel">
+            <div class="panel-heading compact-heading">
+              <h3><i class="fa-solid fa-file-audio"></i> Media</h3>
+              <p>Завантаж аудіо і cover або згенеруй cover автоматично.</p>
+            </div>
+
+            <div class="upload-grid compact-upload-grid">
+              <label class="upload-card compact-upload-card">
+                <input id="meta-audio-input" type="file" accept="audio/*" hidden>
+                <span class="upload-icon"><i class="fa-solid fa-music"></i></span>
+                <strong>Audio file</strong>
+                <small id="meta-audio-name">Ще не вибрано</small>
+              </label>
+              <label class="upload-card compact-upload-card">
+                <input id="meta-cover-input" type="file" accept="image/*" hidden>
+                <span class="upload-icon"><i class="fa-solid fa-image"></i></span>
+                <strong>Cover image</strong>
+                <small id="meta-cover-name">Ще не вибрано</small>
+              </label>
+            </div>
+
+            <div class="field compact-field full-width-field">
+              <span>Style preset</span>
+              <select id="meta-style-preset">
+                <option value="dubstep-tribal">Dubstep tribal</option>
+                <option value="drumnbass-tribal">Drumnbass tribal</option>
+                <option value="custom">Custom</option>
+              </select>
+            </div>
+
+            <div class="field compact-field full-width-field">
+              <span>Стиль / creative brief</span>
+              <textarea id="meta-style-brief" rows="3" placeholder="Наприклад: cinematic synthwave, нічне місто, ретро-футуризм, жіночий вокал, теплий неон.">Dubstep tribal, massive bass ritual, neon cyber drums, ancient tribal percussion, electric drops, futuristic underground rave energy, bright cyan and orange pulse.</textarea>
+            </div>
+
+            <div class="action-row compact-actions">
+              <button id="meta-ai-fill" class="accent-button" type="button">
+                <i class="fa-solid fa-robot"></i>
+                <span>Автогенерація інфи</span>
+              </button>
+              <button id="meta-ai-image" type="button">
+                <i class="fa-solid fa-image"></i>
+                <span>Генерація картинки</span>
+              </button>
+            </div>
+
+            <div class="cover-preview-wrap compact-cover-wrap">
+              <img id="meta-cover-preview" class="cover-preview is-hidden" alt="Cover preview">
+              <div id="meta-cover-empty" class="cover-empty">
+                <i class="fa-regular fa-image"></i>
+                <span>Preview cover тут</span>
+              </div>
+            </div>
+
+            <dl class="meta-stats compact-meta-stats" id="meta-audio-stats">
+              <div>
+                <dt>Duration</dt>
+                <dd>00:00.000</dd>
+              </div>
+              <div>
+                <dt>Sample rate</dt>
+                <dd>-</dd>
+              </div>
+              <div>
+                <dt>Peak</dt>
+                <dd>-</dd>
+              </div>
+              <div>
+                <dt>Suggested gain</dt>
+                <dd>-</dd>
+              </div>
+            </dl>
+          </section>
+
+          <section class="panel meta-panel compact-panel">
+            <div class="panel-heading compact-heading">
+              <h3><i class="fa-solid fa-pen-ruler"></i> Release fields</h3>
+              <p>Максимально насичена форма для треку, релізу і дистрибуції.</p>
+            </div>
+
+            <div class="form-grid dense-form-grid">
+              <label class="field">
+                <span>Title</span>
+                <input id="meta-title" type="text" placeholder="Track title">
+              </label>
+              <label class="field">
+                <span>Version</span>
+                <input id="meta-version" type="text" placeholder="Radio Edit / Extended Mix">
+              </label>
+              <label class="field">
+                <span>Artist</span>
+                <input id="meta-artist" type="text" placeholder="Main artist">
+              </label>
+              <label class="field">
+                <span>Featured artists</span>
+                <input id="meta-featured-artists" type="text" placeholder="Feat. name 1, name 2">
+              </label>
+              <label class="field">
+                <span>Album / release</span>
+                <input id="meta-album" type="text" placeholder="Album or release name">
+              </label>
+              <label class="field">
+                <span>Release type</span>
+                <select id="meta-release-type">
+                  <option value="single">Single</option>
+                  <option value="ep">EP</option>
+                  <option value="album">Album</option>
+                  <option value="soundtrack">Soundtrack</option>
+                  <option value="demo">Demo</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Genre</span>
+                <input id="meta-genres" type="text" placeholder="house, pop, cinematic">
+              </label>
+              <label class="field">
+                <span>Subgenre</span>
+                <input id="meta-subgenre" type="text" placeholder="synthwave, afro house, dream pop">
+              </label>
+              <label class="field">
+                <span>Mood</span>
+                <input id="meta-mood" type="text" placeholder="uplifting, dark, nostalgic">
+              </label>
+              <label class="field">
+                <span>Language</span>
+                <input id="meta-language" type="text" placeholder="Ukrainian / English">
+              </label>
+              <label class="field">
+                <span>BPM</span>
+                <input id="meta-bpm" type="number" min="1" step="1" placeholder="128">
+              </label>
+              <label class="field">
+                <span>Key</span>
+                <input id="meta-key" type="text" placeholder="A minor / C major">
+              </label>
+              <label class="field">
+                <span>Label</span>
+                <input id="meta-label" type="text" placeholder="Label or channel">
+              </label>
+              <label class="field">
+                <span>Composer</span>
+                <input id="meta-composer" type="text" placeholder="Composer name">
+              </label>
+              <label class="field">
+                <span>Lyricist</span>
+                <input id="meta-lyricist" type="text" placeholder="Lyricist name">
+              </label>
+              <label class="field">
+                <span>Producer</span>
+                <input id="meta-producer" type="text" placeholder="Producer name">
+              </label>
+              <label class="field">
+                <span>ISRC</span>
+                <input id="meta-isrc" type="text" placeholder="Optional ISRC">
+              </label>
+              <label class="field">
+                <span>UPC / EAN</span>
+                <input id="meta-upc" type="text" placeholder="Optional UPC/EAN">
+              </label>
+              <label class="field">
+                <span>Release year</span>
+                <input id="meta-year" type="number" min="1900" step="1" placeholder="2026">
+              </label>
+              <label class="field">
+                <span>Copyright</span>
+                <input id="meta-copyright" type="text" placeholder="(c) 2026 Label name">
+              </label>
+              <label class="field full">
+                <span>Tags</span>
+                <input id="meta-tags" type="text" placeholder="night drive, female vocal, neon, summer release">
+              </label>
+              <label class="field full">
+                <span>Short description</span>
+                <input id="meta-short-description" type="text" placeholder="Короткий release summary для карточки або CMS.">
+              </label>
+              <label class="field full">
+                <span>Description</span>
+                <textarea id="meta-description" rows="4" placeholder="Розгорнутий опис треку, ідея релізу, production notes, pitch text."></textarea>
+              </label>
+              <label class="field full">
+                <span>Marketing hook</span>
+                <textarea id="meta-marketing-hook" rows="3" placeholder="Окремий промо-абзац або CTA для лендингу, соцмереж чи опису на платформі."></textarea>
+              </label>
+              <label class="field full">
+                <span>Distribution notes</span>
+                <textarea id="meta-distribution-notes" rows="3" placeholder="Нотатки для бекенду або редакторів: clean version, language notes, rights notes."></textarea>
+              </label>
+            </div>
+
+          </section>
+
+          <section class="panel meta-panel meta-panel-wide compact-panel normalization-panel">
+            <div class="panel-heading compact-heading">
+              <h3><i class="fa-solid fa-wave-square"></i> Normalize & Preview</h3>
+              <p>Окрема секція для підняття гучності ближче до піку, перегляду хвилі до/після і A/B-прослуховування.</p>
+            </div>
+
+            <div class="normalize-layout">
+              <div class="normalize-visual">
+                <div class="normalize-wave-wrap">
+                  <canvas id="meta-normalize-waveform"></canvas>
+                  <div id="meta-normalize-empty" class="normalize-empty">
+                    <i class="fa-solid fa-waveform-lines"></i>
+                    <span>Завантаж аудіо, щоб побачити хвилю і projected peak.</span>
+                  </div>
+                </div>
+                <div class="legend normalize-legend">
+                  <span><i class="dot original"></i> Original waveform</span>
+                  <span><i class="dot normalized"></i> Boosted / normalized waveform</span>
+                  <span><i class="dot playhead"></i> Preview playhead</span>
+                </div>
+              </div>
+
+              <div class="normalize-controls">
+                <div class="normalize-meter-grid">
+                  <div>
+                    <dt>Current peak</dt>
+                    <dd id="meta-normalize-current">-</dd>
+                  </div>
+                  <div>
+                    <dt>Target peak</dt>
+                    <dd id="meta-normalize-target-display">-</dd>
+                  </div>
+                  <div>
+                    <dt>Gain lift</dt>
+                    <dd id="meta-normalize-gain-display">+0.00 dB</dd>
+                  </div>
+                  <div>
+                    <dt>Projected peak</dt>
+                    <dd id="meta-normalize-projected">-</dd>
+                  </div>
+                </div>
+
+                <div class="normalize-control-grid">
+                  <label class="toggle-row compact-toggle-row">
+                    <input id="meta-normalize-enabled" type="checkbox" checked>
+                    <span>Увімкнути нормалізацію</span>
+                  </label>
+                  <label class="field compact-field">
+                    <span>Target peak</span>
+                    <select id="meta-normalize-target">
+                      <option value="-1">-1 dBFS</option>
+                      <option value="-0.3">-0.3 dBFS</option>
+                      <option value="-2">-2 dBFS</option>
+                      <option value="-0.1">-0.1 dBFS</option>
+                    </select>
+                  </label>
+                  <label class="field compact-field normalize-slider-field">
+                    <span>Gain lift</span>
+                    <input id="meta-normalize-gain" type="range" min="-6" max="18" step="0.1" value="0">
+                    <small id="meta-normalize-gain-text">+0.00 dB</small>
+                  </label>
+                  <button id="meta-normalize-reset" class="accent-button" type="button">
+                    <i class="fa-solid fa-bolt"></i>
+                    <span>Match target peak</span>
+                  </button>
+                  <label class="toggle-row compact-toggle-row">
+                    <input id="meta-explicit" type="checkbox">
+                    <span>Explicit content</span>
+                  </label>
+                  <div class="normalize-note" id="meta-normalize-note">Поточний preview покаже, наскільки треба підняти трек до target peak.</div>
+                </div>
+
+                <div class="action-row compact-actions normalize-preview-actions">
+                  <button id="meta-preview-original" type="button">
+                    <i class="fa-solid fa-play"></i>
+                    <span>Play original</span>
+                  </button>
+                  <button id="meta-preview-normalized" class="accent-button" type="button">
+                    <i class="fa-solid fa-sliders"></i>
+                    <span>Play boosted</span>
+                  </button>
+                  <button id="meta-preview-stop" type="button">
+                    <i class="fa-solid fa-stop"></i>
+                    <span>Stop</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel meta-panel meta-panel-wide compact-panel">
+            <div class="panel-heading compact-heading">
+              <h3><i class="fa-brands fa-telegram"></i> Telegram Delivery</h3>
+              <p>Відправка релізу в канал і локальний експорт аудіо без проміжного API handoff.</p>
+            </div>
+
+            <div class="action-row compact-actions delivery-actions">
+              <button id="meta-send-telegram" class="accent-button" type="button">
+                <i class="fa-brands fa-telegram"></i>
+                <span>Відправити в Telegram</span>
+              </button>
+              <button id="meta-export-audio" type="button">
+                <i class="fa-solid fa-file-arrow-down"></i>
+                <span>Export audio</span>
+              </button>
+            </div>
+
+            <div id="meta-telegram-progress" class="telegram-progress is-hidden" aria-live="polite">
+              <div class="telegram-progress-bar">
+                <div id="meta-telegram-progress-fill" class="telegram-progress-fill"></div>
+              </div>
+              <div id="meta-telegram-progress-text" class="telegram-progress-text">0%</div>
+            </div>
+
+            <p id="meta-status" class="status-line">Завантаж аудіо і можеш відправити реліз у Telegram або експортувати WAV.</p>
+            <pre id="meta-payload-preview" class="payload-preview compact-payload"></pre>
+          </section>
+        </div>
+      </section>
+
+      <section id="studio-view" class="view workspace-view">
+        <div class="workspace-head panel shallow compact-panel">
+          <button class="back-button" type="button" data-back-home>
+            <i class="fa-solid fa-arrow-left"></i>
+            <span>Назад</span>
+          </button>
+          <div>
+            <p class="eyebrow">Workspace</p>
+            <h2>MP3 Studio</h2>
+          </div>
+          <p class="workspace-summary">Компактний технічний перегляд матеріалу перед публікацією або API-submit.</p>
+        </div>
+
+        <div class="studio-layout compact-studio-layout">
+          <aside class="studio-sidebar compact-sidebar">
+            <section class="panel compact-panel">
+              <div class="panel-heading compact-heading">
+                <h3><i class="fa-solid fa-folder-open"></i> Session</h3>
+                <p>Імпорт аудіо в поточну студійну сесію.</p>
+              </div>
+              <div class="button-stack compact-stack">
+                <button id="add-files" class="accent-button" type="button">
+                  <i class="fa-solid fa-plus"></i>
+                  <span>Додати аудіо</span>
+                </button>
+              </div>
+              <input id="file-input" type="file" accept="audio/*" multiple hidden>
+
+              <label class="field">
+                <span>Zoom</span>
+                <input id="zoom-slider" type="range" min="0" max="1000" step="1" value="485">
+              </label>
+
+              <div class="zoom-presets compact-zoom-presets">
+                <button data-zoom="2" type="button">2 px/s</button>
+                <button data-zoom="20" type="button">20 px/s</button>
+                <button data-zoom="200" type="button">200 px/s</button>
+                <button data-zoom="2000" type="button">2000 px/s</button>
+              </div>
+
+              <div class="button-row compact">
+                <button id="zoom-out" type="button"><i class="fa-solid fa-minus"></i></button>
+                <button id="fit-all" type="button">Fit</button>
+                <button id="zoom-in" type="button"><i class="fa-solid fa-plus"></i></button>
+              </div>
+            </section>
+
+            <section class="panel compact-panel">
+              <div class="panel-heading compact-heading">
+                <h3><i class="fa-solid fa-play"></i> Transport</h3>
+                <p>Playback і контроль позиції на таймлайні.</p>
+              </div>
+              <div class="button-row compact">
+                <button id="rewind" type="button"><i class="fa-solid fa-backward-step"></i></button>
+                <button id="toggle-play" class="accent-button" type="button"><i class="fa-solid fa-play"></i><span>Play</span></button>
+                <button id="pause" type="button"><i class="fa-solid fa-pause"></i></button>
+              </div>
+              <dl class="stats compact-stats">
+                <div>
+                  <dt>Playhead</dt>
+                  <dd id="playhead-label">00:00.000</dd>
+                </div>
+                <div>
+                  <dt>Project</dt>
+                  <dd id="project-length">00:00.000</dd>
+                </div>
+                <div>
+                  <dt>Tracks</dt>
+                  <dd id="track-count">0</dd>
+                </div>
+                <div>
+                  <dt>Zoom</dt>
+                  <dd id="zoom-label">120 px/s</dd>
+                </div>
+              </dl>
+            </section>
+          </aside>
+
+          <div class="studio-main compact-studio-main">
+            <section class="panel hero-strip compact-panel compact-strip">
+              <div>
+                <p class="eyebrow">Waveform Engine</p>
+                <h3>Рендер тільки видимої області</h3>
+                <p>Малюється лише поточне viewport-вікно, тому zoom, scroll і ruler працюють стабільніше.</p>
+              </div>
+              <div class="legend compact-legend">
+                <span><i class="dot upload"></i> Audio track</span>
+                <span><i class="dot playhead"></i> Playhead</span>
+              </div>
+            </section>
+
+            <section class="panel editor compact-panel">
+              <div class="ruler-wrap">
+                <div class="track-gutter header-cell">Tracks</div>
+                <div class="ruler-stage">
+                  <canvas id="ruler-canvas"></canvas>
+                </div>
+              </div>
+
+              <div class="timeline-body">
+                <div id="tracks-container"></div>
+              </div>
+
+              <div class="scrollbar-wrap">
+                <div class="track-gutter footer-cell">scroll</div>
+                <div id="scroll-host" class="scroll-host">
+                  <div id="scroll-spacer"></div>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <template id="track-template">
+    <article class="track-row">
+      <div class="track-gutter">
+        <div class="track-meta">
+          <div>
+            <p class="track-kind"></p>
+            <h3 class="track-name"></h3>
+          </div>
+          <button class="remove-track" title="Видалити трек" type="button">
+            <i class="fa-solid fa-trash"></i>
+          </button>
+        </div>
+        <div class="track-controls">
+          <button class="mute-track" type="button">Mute</button>
+          <label>
+            <span>Vol</span>
+            <input class="volume-track" type="range" min="0" max="1" step="0.01" value="1">
+          </label>
+        </div>
+        <p class="track-duration"></p>
+      </div>
+      <div class="track-stage">
+        <canvas class="track-canvas"></canvas>
+      </div>
+    </article>
+  </template>
+
+  <script src="./app.js"></script>
+</body>
+</html>

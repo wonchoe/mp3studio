@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mp3studio
+  namespace: mp3studio
+  labels:
+    app: mp3studio
+spec:
+  selector:
+    app: mp3studio
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+  type: ClusterIP

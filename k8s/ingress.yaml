@@ -1,0 +1,19 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: mp3studio
+  namespace: mp3studio
+  annotations:
+    kubernetes.io/ingress.class: nginx
+spec:
+  rules:
+    - host: mp3studio.cursor.style
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: mp3studio
+                port:
+                  number: 80

@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mp3studio
+  namespace: mp3studio
+  labels:
+    app: mp3studio
+spec:
+  replicas: 1
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      app: mp3studio
+  template:
+    metadata:
+      labels:
+        app: mp3studio
+    spec:
+      containers:
+        - name: mp3studio
+          image: ghcr.io/wonchoe/mp3studio:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8765
+          env:
+            - name: PORT
+              value: "8765"
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: mp3studio-secrets
+                  key: OPENAI_API_KEY
+            - name: TELEGRAM_BOT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: mp3studio-secrets
+                  key: TELEGRAM_BOT_TOKEN
+            - name: TELEGRAM_CHAT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: mp3studio-secrets
+                  key: TELEGRAM_CHAT_ID
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
