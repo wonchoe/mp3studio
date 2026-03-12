@@ -56,6 +56,57 @@ const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || envFile.TELEGRAM_BO
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || envFile.TELEGRAM_CHAT_ID || "@wonchoe_music";
 const OPENAI_TEXT_TIMEOUT_MS = Number(process.env.OPENAI_TEXT_TIMEOUT_MS || envFile.OPENAI_TEXT_TIMEOUT_MS || 90000);
 const OPENAI_IMAGE_TIMEOUT_MS = Number(process.env.OPENAI_IMAGE_TIMEOUT_MS || envFile.OPENAI_IMAGE_TIMEOUT_MS || 120000);
+const EXPORT_FORMATS = {
+  mp3: {
+    extension: "mp3",
+    mimeType: "audio/mpeg",
+    codecArgs: ["-c:a", "libmp3lame", "-b:a", "320k", "-id3v2_version", "3"],
+  },
+  flac: {
+    extension: "flac",
+    mimeType: "audio/flac",
+    codecArgs: ["-ar", "44100", "-sample_fmt", "s16", "-c:a", "flac", "-compression_level", "8"],
+  },
+};
+const ROUTENOTE_STORE_TERMS = [
+  "spotify",
+  "apple music",
+  "itunes",
+  "deezer",
+  "amazon music",
+  "youtube",
+  "tiktok",
+  "instagram",
+  "facebook",
+  "telegram",
+  "routenote",
+  "soundcloud",
+  "beatport",
+  "pandora",
+  "tidal",
+];
+const ROUTENOTE_PROMO_TERMS = [
+  "follow",
+  "subscribe",
+  "stream now",
+  "available now",
+  "out now",
+  "link in bio",
+  "pre-save",
+  "presave",
+  "buy now",
+  "download now",
+  "check out",
+];
+const ROUTENOTE_FORBIDDEN_TERMS = [
+  "non-profit",
+  "non profit",
+  "copyright free",
+  "copyright-free",
+  "karaoke",
+  "tribute",
+];
+const TITLE_STOP_WORDS = new Set(["and", "the", "with", "feat", "featuring", "edit", "mix", "version", "track", "song", "audio"]);
 
 function sendJson(response, statusCode, payload) {
   response.writeHead(statusCode, {
@@ -182,6 +233,172 @@ function extractResponseText(payload) {
   return texts.join("\n").trim();
 }
 
+function escapeRegExp(value) {
+  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function toTitleCase(value) {
+  return String(value || "")
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
+}
+
+function createFallbackTitle(seedText) {
+  const words = String(seedText || "")
+    .split(/[^a-z0-9]+/i)
+    .map((part) => part.trim())
+    .filter((part) => part.length >= 3 && !TITLE_STOP_WORDS.has(part.toLowerCase()));
+
+  if (words.length >= 2) {
+    return toTitleCase(`${words[0]} ${words[1]}`);
+  }
+
+  if (words.length === 1) {
+    return `${toTitleCase(words[0])} Pulse`;
+  }
+
+  return "Midnight Signal";
+}
+
+function stripRouteNotePromotion(value) {
+  let sanitized = String(value || "").replace(/[\r\n]+/g, " ");
+  sanitized = sanitized.replace(/https?:\/\/\S+/gi, " ");
+  sanitized = sanitized.replace(/\bwww\.\S+/gi, " ");
+  sanitized = sanitized.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, " ");
+  sanitized = sanitized.replace(/(^|\s)[@#][\w.-]+/g, " ");
+  sanitized = sanitized.replace(/\+?\d[\d\s().-]{6,}\d/g, " ");
+
+  for (const term of [...ROUTENOTE_STORE_TERMS, ...ROUTENOTE_PROMO_TERMS, ...ROUTENOTE_FORBIDDEN_TERMS]) {
+    sanitized = sanitized.replace(new RegExp(`\\b${escapeRegExp(term)}\\b`, "gi"), " ");
+  }
+
+  sanitized = sanitized.replace(/\s{2,}/g, " ").trim();
+  sanitized = sanitized.replace(/^[|,;:./\\\-\s]+|[|,;:./\\\-\s]+$/g, "").trim();
+  return sanitized;
+}
+
+function sanitizeIntegerString(value, minimum, maximum) {
+  const numeric = Number.parseInt(String(value || "").trim(), 10);
+  if (!Number.isFinite(numeric)) {
+    return "";
+  }
+
+  return String(Math.min(maximum, Math.max(minimum, numeric)));
+}
+
+function sanitizeGenreList(value) {
+  const parts = String(value || "")
+    .split(",")
+    .map((part) => stripRouteNotePromotion(part))
+    .filter(Boolean);
+
+  return parts.slice(0, 2).join(", ");
+}
+
+function sanitizeFeaturedArtists(value) {
+  return String(value || "")
+    .split(",")
+    .map((part) => stripRouteNotePromotion(part))
+    .filter(Boolean)
+    .join(", ");
+}
+
+function sanitizeRouteNoteParty(value, fallbackValue = "") {
+  const sanitized = stripRouteNotePromotion(value || fallbackValue);
+  return sanitized || stripRouteNotePromotion(fallbackValue);
+}
+
+function normalizeRouteNoteTitle(value, metadata, fallbackSeed = "") {
+  let title = stripRouteNotePromotion(value);
+  const artist = sanitizeRouteNoteParty(metadata.artist);
+
+  title = title.replace(/^\s*\d{1,2}\s+(?=\S)/u, "").replace(/^\s*\d+\s*[-:.)]\s*/u, "").trim();
+
+  if (artist) {
+    title = title.replace(new RegExp(escapeRegExp(artist), "gi"), " ").replace(/\s{2,}/g, " ").trim();
+    title = title.replace(/^[-|:]+\s*/, "").trim();
+  }
+
+  if (!title || /^untitled$/i.test(title)) {
+    title = createFallbackTitle(fallbackSeed || metadata.styleBrief || metadata.fileName || metadata.genres);
+  }
+
+  const featuredArtists = sanitizeFeaturedArtists(metadata["featured-artists"]);
+  if (featuredArtists && !/\((feat\.|with)\s/i.test(title)) {
+    title = `${title} (feat. ${featuredArtists})`;
+  }
+
+  return title.slice(0, 200);
+}
+
+function normalizeRouteNoteVersion(value, metadata) {
+  const version = stripRouteNotePromotion(value);
+  if (!version) {
+    return "";
+  }
+
+  if (/\b(feat\.|with)\b/i.test(version)) {
+    return "";
+  }
+
+  if (metadata.title && metadata.title.toLowerCase().includes(version.toLowerCase())) {
+    return "";
+  }
+
+  return version.slice(0, 120);
+}
+
+function sanitizeExportFormat(value) {
+  return EXPORT_FORMATS[value] ? value : "mp3";
+}
+
+function sanitizeRouteNoteMetadata(metadata = {}, options = {}) {
+  const fallbackArtist = "The Ravonix & Voltaris";
+  const safeArtist = sanitizeRouteNoteParty(metadata.artist, fallbackArtist) || fallbackArtist;
+  const year = sanitizeIntegerString(metadata.year || new Date().getFullYear(), 1900, 2100) || String(new Date().getFullYear());
+  const safeFeaturedArtists = sanitizeFeaturedArtists(metadata["featured-artists"]);
+  const safeTitle = normalizeRouteNoteTitle(metadata.title, {
+    ...metadata,
+    artist: safeArtist,
+    "featured-artists": safeFeaturedArtists,
+  }, options.fallbackSeed || metadata.styleBrief || metadata.fileName || metadata.album);
+  const safeVersion = normalizeRouteNoteVersion(metadata.version, { title: safeTitle });
+  const safeAlbum = stripRouteNotePromotion(metadata.album) || (metadata["release-type"] === "single" ? safeTitle : "");
+
+  return {
+    title: safeTitle,
+    version: safeVersion,
+    artist: safeArtist,
+    "featured-artists": safeFeaturedArtists,
+    album: safeAlbum,
+    "release-type": ["single", "ep", "album", "soundtrack", "demo"].includes(String(metadata["release-type"] || "").toLowerCase())
+      ? String(metadata["release-type"]).toLowerCase()
+      : "single",
+    genres: sanitizeGenreList(metadata.genres),
+    subgenre: stripRouteNotePromotion(metadata.subgenre),
+    mood: stripRouteNotePromotion(metadata.mood),
+    language: stripRouteNotePromotion(metadata.language),
+    bpm: sanitizeIntegerString(metadata.bpm, 1, 300),
+    key: String(metadata.key || "").replace(/[^A-Ga-g#bmMajoirn0-9/ +()-]/g, "").trim().slice(0, 40),
+    label: sanitizeRouteNoteParty(metadata.label, safeArtist),
+    composer: sanitizeRouteNoteParty(metadata.composer, safeArtist),
+    lyricist: sanitizeRouteNoteParty(metadata.lyricist, safeArtist),
+    producer: sanitizeRouteNoteParty(metadata.producer, safeArtist),
+    isrc: String(metadata.isrc || "").replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 12),
+    upc: String(metadata.upc || "").replace(/\D/g, "").slice(0, 14),
+    year,
+    copyright: sanitizeRouteNoteParty(metadata.copyright, safeArtist),
+    tags: "",
+    "short-description": stripRouteNotePromotion(metadata["short-description"]).slice(0, 180),
+    description: stripRouteNotePromotion(metadata.description).slice(0, 500),
+    "marketing-hook": "",
+    "distribution-notes": "",
+    explicit: Boolean(metadata.explicit),
+  };
+}
+
 function tryParseJson(text) {
   try {
     return JSON.parse(text);
@@ -275,18 +492,89 @@ async function generateCoverImage(prompt) {
 
 async function handleAiFill(request, response) {
   const body = await readJsonBody(request);
+  const presetHint = body.stylePreset && body.stylePreset !== "custom"
+    ? `IMPORTANT: The user has selected the style preset "${String(body.stylePreset).replace(/[^a-zA-Z0-9 _-]/g, "").slice(0, 60)}". The genres, subgenre, mood, and BPM you generate MUST match this preset style. Override any existing field values that contradict the preset.`
+    : null;
   const systemPrompt = [
     "You fill MP3 release metadata for an audio publishing workflow.",
     "Return only valid JSON.",
     "IMPORTANT: The artist is ALWAYS 'The Ravonix & Voltaris'. Never change artist, composer, lyricist, producer, label, or copyright — they must all be 'The Ravonix & Voltaris'.",
     "IMPORTANT: You MUST always generate a creative, catchy, unique song title that matches the musical style/genre/mood. Never leave title empty or as 'Untitled'. Invent an original name.",
+    presetHint,
+    "Follow RouteNote metadata rules.",
+    "Do not generate SEO text, promotional copy, hashtags, social handles, URLs, phone numbers, emails, store names, distributor names, contact details, 'non-profit', 'copyright free', 'karaoke', or 'tribute'.",
+    "Do not stuff metadata with keywords. Keep comments empty. Keep tags empty. Keep marketing-hook empty. Keep distribution-notes empty unless the user explicitly supplied compliant rights notes.",
+    "Do not put the primary artist into the title. If there are featured artists, the title must use the format 'Track Title (feat. Artist)'.",
+    "Do not duplicate title version details in the main title. Keep version concise and factual, like 'Extended Mix' or 'Live'.",
+    "Album metadata for a single should closely match the track metadata. If release-type is single and album is empty, use the track title as the album.",
+    "Use clean punctuation and standard language only.",
     "Keep other existing values if they are already present and stronger than guesses.",
     "Return this object shape: { fields: { title, version, artist, featured-artists, album, release-type, genres, subgenre, mood, language, bpm, key, label, composer, lyricist, producer, isrc, upc, year, copyright, tags, short-description, description, marketing-hook, distribution-notes } }.",
     "Do not include markdown fences.",
-  ].join(" ");
+  ].filter(Boolean).join(" ");
 
   const result = await openAiTextJson(systemPrompt, body);
-  sendJson(response, 200, result);
+  const normalizedFields = sanitizeRouteNoteMetadata(result.fields || result || {}, {
+    fallbackSeed: [body.styleBrief, body.fileName].filter(Boolean).join(" "),
+  });
+
+  sendJson(response, 200, {
+    fields: normalizedFields,
+  });
+}
+
+async function normalizeArtworkToRouteNote(sourceBuffer, inputMimeType = "image/png") {
+  const tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "mp3cover-"));
+  const inputExt = inputMimeType.includes("png") ? ".png" : ".jpg";
+  const inputPath = path.join(tempDir, `input${inputExt}`);
+  const outputPath = path.join(tempDir, "cover.jpg");
+
+  try {
+    await fs.promises.writeFile(inputPath, sourceBuffer);
+
+    await new Promise((resolve, reject) => {
+      const ffmpeg = spawn("ffmpeg", [
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-y",
+        "-i",
+        inputPath,
+        "-vf",
+        "scale=3000:3000:force_original_aspect_ratio=decrease,pad=3000:3000:(ow-iw)/2:(oh-ih)/2:color=white",
+        "-frames:v",
+        "1",
+        "-q:v",
+        "2",
+        outputPath,
+      ]);
+      let stderr = "";
+
+      ffmpeg.stderr.on("data", (chunk) => {
+        stderr += chunk.toString("utf8");
+      });
+      ffmpeg.on("error", reject);
+      ffmpeg.on("close", (code) => {
+        if (code !== 0) {
+          reject(new Error(stderr.trim() || `ffmpeg artwork normalization failed with code ${code}`));
+          return;
+        }
+
+        resolve();
+      });
+    });
+
+    const outputBuffer = await fs.promises.readFile(outputPath);
+    return {
+      imageBase64: outputBuffer.toString("base64"),
+      mimeType: "image/jpeg",
+      fileName: "cover.jpg",
+      width: 3000,
+      height: 3000,
+    };
+  } finally {
+    await fs.promises.rm(tempDir, { recursive: true, force: true });
+  }
 }
 
 async function handleGenerateCover(request, response) {
@@ -296,7 +584,9 @@ async function handleGenerateCover(request, response) {
     "Make it bright, luminous, bold, saturated, high-energy, premium and polished for streaming platforms.",
     "Avoid dark, gloomy, muddy, monochrome, black-dominant or horror-like imagery.",
     "Absolutely no text, no letters, no words, no title, no artist name, no logo, no watermark, no typography anywhere in the image.",
-    "Focus on pure visual composition, strong shapes, vibrant lighting and clean professional artwork.",
+    "Do not include social media logos, store logos, QR codes, barcodes, celebrity likenesses, famous brands, copyrighted characters, physical CD/DVD references, or misleading brand associations.",
+    "Keep the artwork safe for distributor approval: no nudity, gore, discriminatory imagery, threats, or offensive content.",
+    "Focus on pure visual composition, strong shapes, vibrant lighting and clean professional artwork suited for a 3000x3000 JPG release cover.",
     body.prompt ? `Creative brief: ${body.prompt}` : "Creative brief: bright modern music artwork with strong color and motion.",
   ];
 
@@ -307,7 +597,25 @@ async function handleGenerateCover(request, response) {
   const prompt = promptParts.join(" ");
 
   const image = await generateCoverImage(prompt);
-  sendJson(response, 200, image);
+  let sourceBuffer = null;
+  let inputMimeType = "image/png";
+
+  if (image.imageBase64) {
+    sourceBuffer = Buffer.from(image.imageBase64, "base64");
+  } else if (image.imageUrl) {
+    const imageResponse = await fetchWithTimeout(image.imageUrl, {}, OPENAI_IMAGE_TIMEOUT_MS);
+    if (!imageResponse.ok) {
+      throw new Error(`Generated image download failed with ${imageResponse.status}`);
+    }
+
+    sourceBuffer = Buffer.from(await imageResponse.arrayBuffer());
+    inputMimeType = imageResponse.headers.get("content-type") || inputMimeType;
+  } else {
+    throw new Error("OpenAI image response did not include usable image data");
+  }
+
+  const normalizedArtwork = await normalizeArtworkToRouteNote(sourceBuffer, inputMimeType);
+  sendJson(response, 200, normalizedArtwork);
 }
 
 function telegramApiUrl(method) {
@@ -341,18 +649,7 @@ function sanitizeMetadataValue(value) {
 }
 
 function buildComment(metadata) {
-  const fields = [
-    metadata.version,
-    metadata["short-description"],
-    metadata.description,
-    metadata["marketing-hook"],
-    metadata["distribution-notes"],
-    metadata.tags,
-  ]
-    .map(sanitizeMetadataValue)
-    .filter(Boolean);
-
-  return fields.join(" | ").slice(0, 1000);
+  return "";
 }
 
 function appendMetadataArgs(ffmpegArgs, metadata = {}) {
@@ -366,7 +663,7 @@ function appendMetadataArgs(ffmpegArgs, metadata = {}) {
     ["copyright", metadata.copyright],
     ["composer", metadata.composer],
     ["publisher", metadata.label],
-    ["track", metadata.version],
+    ["subtitle", metadata.version],
     ["isrc", metadata.isrc],
     ["TBPM", metadata.bpm],
     ["initialkey", metadata.key],
@@ -383,24 +680,14 @@ function appendMetadataArgs(ffmpegArgs, metadata = {}) {
   }
 }
 
-async function transcodeAudioBufferToMp3({ sourceBuffer, sourceName, gainDb = 0, metadata = null, cover = null }) {
+async function transcodeAudioBuffer({ sourceBuffer, sourceName, gainDb = 0, metadata = null, cover = null, format = "mp3" }) {
+  const formatConfig = EXPORT_FORMATS[sanitizeExportFormat(format)];
   const tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "mp3suite-"));
   const sourceExtension = path.extname(sourceName || "") || ".bin";
   const sourcePath = path.join(tempDir, `source${sourceExtension}`);
-  const outputPath = path.join(tempDir, "output.mp3");
-  let coverPath = null;
-
+  const outputPath = path.join(tempDir, `output.${formatConfig.extension}`);
   try {
     await fs.promises.writeFile(sourcePath, sourceBuffer);
-
-    if (cover?.dataBase64) {
-      const coverExtension = path.extname(cover.name || "") || (cover.mimeType === "image/png" ? ".png" : ".jpg");
-      coverPath = path.join(tempDir, `cover${coverExtension}`);
-      await fs.promises.writeFile(coverPath, Buffer.from(cover.dataBase64, "base64"));
-      console.log("[ffmpeg] cover written to", coverPath, "size:", Buffer.from(cover.dataBase64, "base64").length, "bytes");
-    } else {
-      console.log("[ffmpeg] no cover data provided");
-    }
 
     const ffmpegArgs = [
       "-hide_banner",
@@ -411,39 +698,13 @@ async function transcodeAudioBufferToMp3({ sourceBuffer, sourceName, gainDb = 0,
       sourcePath,
     ];
 
-    if (coverPath) {
-      ffmpegArgs.push("-i", coverPath);
-    }
-
     if (Number.isFinite(gainDb) && Math.abs(gainDb) > 0.001) {
       ffmpegArgs.push("-filter:a", `volume=${gainDb}dB`);
     }
 
     ffmpegArgs.push("-map", "0:a");
 
-    if (coverPath) {
-      ffmpegArgs.push(
-        "-map",
-        "1:v",
-        "-c:v",
-        "mjpeg",
-        "-disposition:v",
-        "attached_pic",
-        "-metadata:s:v",
-        "title=Album cover",
-        "-metadata:s:v",
-        "comment=Cover (front)",
-      );
-    }
-
-    ffmpegArgs.push(
-      "-c:a",
-      "libmp3lame",
-      "-b:a",
-      "320k",
-      "-id3v2_version",
-      "3",
-    );
+    ffmpegArgs.push(...formatConfig.codecArgs);
 
     appendMetadataArgs(ffmpegArgs, metadata || {});
     ffmpegArgs.push(outputPath);
@@ -476,23 +737,27 @@ async function transcodeAudioBufferToMp3({ sourceBuffer, sourceName, gainDb = 0,
 
 async function handleExportAudio(request, response) {
   const body = await readJsonBody(request);
-  const mp3Buffer = await buildMp3FromBody(body);
+  const format = sanitizeExportFormat(body.format);
+  const audioBuffer = await buildAudioFromBody(body, format);
+  const formatConfig = EXPORT_FORMATS[format];
   sendJson(response, 200, {
     ok: true,
-    audioBase64: mp3Buffer.toString("base64"),
-    mimeType: "audio/mpeg",
-    fileName: (body.audio.name || "release").replace(/\.[^.]+$/, "") + ".mp3",
+    audioBase64: audioBuffer.toString("base64"),
+    mimeType: formatConfig.mimeType,
+    fileName: (body.audio.name || "release").replace(/\.[^.]+$/, "") + `.${formatConfig.extension}`,
   });
 }
 
-function buildMp3FromBody(body) {
+function buildAudioFromBody(body, format = "mp3") {
   if (!body.audio?.dataBase64) {
     throw new Error("Audio export payload is missing");
   }
 
   const sourceBuffer = Buffer.from(body.audio.dataBase64, "base64");
   const gainDb = Number(body.audio.gainDb || 0);
-  const metadata = Object.assign({}, body.metadata || {});
+  const metadata = sanitizeRouteNoteMetadata(Object.assign({}, body.metadata || {}), {
+    fallbackSeed: [body.audio?.name, body.metadata?.title, body.metadata?.album].filter(Boolean).join(" "),
+  });
 
   if (!metadata.artist) {
     metadata.artist = "The Ravonix & Voltaris";
@@ -501,12 +766,13 @@ function buildMp3FromBody(body) {
   console.log("[transcode] cover:", body.cover ? `yes (${(body.cover.dataBase64 || "").length} chars base64, mime=${body.cover.mimeType})` : "no");
   console.log("[transcode] metadata:", JSON.stringify(metadata).slice(0, 300));
 
-  return transcodeAudioBufferToMp3({
+  return transcodeAudioBuffer({
     sourceBuffer,
     sourceName: body.audio.name,
     gainDb,
     metadata,
     cover: body.cover || null,
+    format,
   });
 }
 
@@ -549,7 +815,13 @@ async function handleSendTelegram(request, response) {
   const caption = typeof body.caption === "string" ? body.caption.slice(0, 1000) : "New release";
   const chatId = TELEGRAM_CHAT_ID;
 
-  const mp3Buffer = await buildMp3FromBody(body);
+  const safeMetadata = sanitizeRouteNoteMetadata(body.metadata || {}, {
+    fallbackSeed: [body.audio?.name, body.caption].filter(Boolean).join(" "),
+  });
+  const mp3Buffer = await buildAudioFromBody({
+    ...body,
+    metadata: safeMetadata,
+  }, "mp3");
   const fileName = (body.audio.name || "release").replace(/\.[^.]+$/, "") + ".mp3";
   console.log("[telegram] mp3 ready, size:", mp3Buffer.length, "bytes, file:", fileName);
 
@@ -567,12 +839,12 @@ async function handleSendTelegram(request, response) {
     }
   }
 
-  if (body.metadata?.title) {
-    audioForm.set("title", String(body.metadata.title).slice(0, 200));
+  if (safeMetadata.title) {
+    audioForm.set("title", String(safeMetadata.title).slice(0, 200));
   }
 
-  if (body.metadata?.artist) {
-    audioForm.set("performer", String(body.metadata.artist).slice(0, 200));
+  if (safeMetadata.artist) {
+    audioForm.set("performer", String(safeMetadata.artist).slice(0, 200));
   } else {
     audioForm.set("performer", "The Ravonix & Voltaris");
   }

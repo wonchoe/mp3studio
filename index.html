@@ -395,11 +395,20 @@
                 <i class="fa-brands fa-telegram"></i>
                 <span>Відправити в Telegram</span>
               </button>
+              <label class="field compact-field export-format-field">
+                <span>Export format</span>
+                <select id="meta-export-format">
+                  <option value="flac">FLAC</option>
+                  <option value="mp3">MP3 320 kbps</option>
+                </select>
+              </label>
               <button id="meta-export-audio" type="button">
                 <i class="fa-solid fa-file-arrow-down"></i>
                 <span>Export audio</span>
               </button>
             </div>
+
+            <p class="delivery-note">RouteNote-safe mode: AI now strips SEO-like tags, promo text, links, handles and contact info, keeps export comments empty, and normalizes AI artwork to square JPG 3000x3000.</p>
 
             <div id="meta-telegram-progress" class="telegram-progress is-hidden" aria-live="polite">
               <div class="telegram-progress-bar">
@@ -408,7 +417,7 @@
               <div id="meta-telegram-progress-text" class="telegram-progress-text">0%</div>
             </div>
 
-            <p id="meta-status" class="status-line">Завантаж аудіо і можеш відправити реліз у Telegram або експортувати WAV.</p>
+            <p id="meta-status" class="status-line">Завантаж аудіо і можеш відправити реліз у Telegram або експортувати RouteNote-ready FLAC чи MP3.</p>
             <pre id="meta-payload-preview" class="payload-preview compact-payload"></pre>
           </section>
         </div>

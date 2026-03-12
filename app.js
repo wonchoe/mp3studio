@@ -79,6 +79,35 @@ const RANDOM_COVER_PROMPTS = [
   "Square album art, dreamy cloud rave scene, floating sound systems, pastel neon sky, pink, blue and lemon glow, surreal music visual, no readable text.",
   "Square cover art, dark mode cyber broadcast studio, giant LED panels, pulse lines, ultraviolet, cyan and silver lighting, high-end music branding image, no readable text.",
 ];
+const EXPORT_FORMATS = {
+  mp3: { extension: "mp3", mimeType: "audio/mpeg", label: "MP3" },
+  flac: { extension: "flac", mimeType: "audio/flac", label: "FLAC" },
+};
+const ROUTENOTE_STORE_TERMS = [
+  "spotify",
+  "apple music",
+  "itunes",
+  "deezer",
+  "amazon music",
+  "youtube",
+  "tiktok",
+  "instagram",
+  "facebook",
+  "telegram",
+  "routenote",
+  "soundcloud",
+  "beatport",
+  "pandora",
+  "tidal",
+];
+const ROUTENOTE_FORBIDDEN_TERMS = [
+  "non-profit",
+  "non profit",
+  "copyright free",
+  "copyright-free",
+  "karaoke",
+  "tribute",
+];
 
 const META_FIELD_IDS = [
   "meta-title",
@@ -145,6 +174,7 @@ const elements = {
   metaAiImage: document.querySelector("#meta-ai-image"),
   metaSendTelegram: document.querySelector("#meta-send-telegram"),
   metaExportAudio: document.querySelector("#meta-export-audio"),
+  metaExportFormat: document.querySelector("#meta-export-format"),
   metaTelegramProgress: document.querySelector("#meta-telegram-progress"),
   metaTelegramProgressFill: document.querySelector("#meta-telegram-progress-fill"),
   metaTelegramProgressText: document.querySelector("#meta-telegram-progress-text"),
@@ -181,6 +211,10 @@ function ensureAudioContext() {
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
+}
+
+function escapeRegExp(value) {
+  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function formatTime(seconds) {
@@ -257,6 +291,169 @@ function applyStylePreset(presetKey, options = {}) {
   }
 }
 
+function stripRouteNotePromotion(value) {
+  let sanitized = String(value || "").replace(/[\r\n]+/g, " ");
+  sanitized = sanitized.replace(/https?:\/\/\S+/gi, " ");
+  sanitized = sanitized.replace(/\bwww\.\S+/gi, " ");
+  sanitized = sanitized.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, " ");
+  sanitized = sanitized.replace(/(^|\s)[@#][\w.-]+/g, " ");
+  sanitized = sanitized.replace(/\+?\d[\d\s().-]{6,}\d/g, " ");
+
+  for (const term of [...ROUTENOTE_STORE_TERMS, ...ROUTENOTE_FORBIDDEN_TERMS]) {
+    sanitized = sanitized.replace(new RegExp(`\\b${escapeRegExp(term)}\\b`, "gi"), " ");
+  }
+
+  return sanitized.replace(/\s{2,}/g, " ").trim().replace(/^[|,;:./\\\-\s]+|[|,;:./\\\-\s]+$/g, "").trim();
+}
+
+function sanitizeIntegerString(value, min, max) {
+  const numeric = Number.parseInt(String(value || "").trim(), 10);
+  if (!Number.isFinite(numeric)) {
+    return "";
+  }
+
+  return String(clamp(numeric, min, max));
+}
+
+function sanitizeFeaturedArtists(value) {
+  return String(value || "")
+    .split(",")
+    .map((part) => stripRouteNotePromotion(part))
+    .filter(Boolean)
+    .join(", ");
+}
+
+function sanitizeGenreList(value) {
+  return String(value || "")
+    .split(",")
+    .map((part) => stripRouteNotePromotion(part))
+    .filter(Boolean)
+    .slice(0, 2)
+    .join(", ");
+}
+
+function sanitizeRouteNoteParty(value, fallbackValue = "") {
+  return stripRouteNotePromotion(value || fallbackValue) || stripRouteNotePromotion(fallbackValue);
+}
+
+function createFallbackTitle(seedText) {
+  const parts = String(seedText || "")
+    .split(/[^a-z0-9]+/i)
+    .map((part) => part.trim())
+    .filter((part) => part.length >= 3);
+
+  if (parts.length >= 2) {
+    return `${parts[0].charAt(0).toUpperCase()}${parts[0].slice(1).toLowerCase()} ${parts[1].charAt(0).toUpperCase()}${parts[1].slice(1).toLowerCase()}`;
+  }
+
+  if (parts.length === 1) {
+    return `${parts[0].charAt(0).toUpperCase()}${parts[0].slice(1).toLowerCase()} Pulse`;
+  }
+
+  return "Midnight Signal";
+}
+
+function sanitizeRouteNoteFields(values = {}) {
+  const safeArtist = sanitizeRouteNoteParty(values.artist, DEFAULT_ARTIST) || DEFAULT_ARTIST;
+  const safeFeaturedArtists = sanitizeFeaturedArtists(values["featured-artists"]);
+  let safeTitle = stripRouteNotePromotion(values.title);
+
+  safeTitle = safeTitle.replace(/^\s*\d{1,2}\s+(?=\S)/u, "").replace(/^\s*\d+\s*[-:.)]\s*/u, "").trim();
+  if (safeArtist) {
+    safeTitle = safeTitle.replace(new RegExp(escapeRegExp(safeArtist), "gi"), " ").replace(/\s{2,}/g, " ").trim();
+    safeTitle = safeTitle.replace(/^[-|:]+\s*/, "").trim();
+  }
+  if (!safeTitle || /^untitled$/i.test(safeTitle)) {
+    safeTitle = createFallbackTitle(values["style-brief"] || values.description || values.album || state.meta.audioFile?.name || "");
+  }
+  if (safeFeaturedArtists && !/\((feat\.|with)\s/i.test(safeTitle)) {
+    safeTitle = `${safeTitle} (feat. ${safeFeaturedArtists})`;
+  }
+
+  const safeVersion = stripRouteNotePromotion(values.version);
+  const safeAlbum = stripRouteNotePromotion(values.album) || (String(values["release-type"] || "single").toLowerCase() === "single" ? safeTitle : "");
+  const safeYear = sanitizeIntegerString(values.year || DEFAULT_RELEASE_YEAR, 1900, 2100) || DEFAULT_RELEASE_YEAR;
+
+  return {
+    ...values,
+    title: safeTitle.slice(0, 200),
+    version: safeVersion && !safeTitle.toLowerCase().includes(safeVersion.toLowerCase()) && !/\b(feat\.|with)\b/i.test(safeVersion) ? safeVersion.slice(0, 120) : "",
+    artist: safeArtist,
+    "featured-artists": safeFeaturedArtists,
+    album: safeAlbum,
+    "release-type": ["single", "ep", "album", "soundtrack", "demo"].includes(String(values["release-type"] || "").toLowerCase())
+      ? String(values["release-type"]).toLowerCase()
+      : "single",
+    genres: sanitizeGenreList(values.genres),
+    subgenre: stripRouteNotePromotion(values.subgenre),
+    mood: stripRouteNotePromotion(values.mood),
+    language: stripRouteNotePromotion(values.language),
+    bpm: sanitizeIntegerString(values.bpm, 1, 300),
+    key: String(values.key || "").replace(/[^A-Ga-g#bmMajoirn0-9/ +()-]/g, "").trim().slice(0, 40),
+    label: sanitizeRouteNoteParty(values.label, DEFAULT_ARTIST),
+    composer: sanitizeRouteNoteParty(values.composer, DEFAULT_ARTIST),
+    lyricist: sanitizeRouteNoteParty(values.lyricist, DEFAULT_ARTIST),
+    producer: sanitizeRouteNoteParty(values.producer, DEFAULT_ARTIST),
+    isrc: String(values.isrc || "").replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 12),
+    upc: String(values.upc || "").replace(/\D/g, "").slice(0, 14),
+    year: safeYear,
+    copyright: sanitizeRouteNoteParty(values.copyright, DEFAULT_COPYRIGHT),
+    tags: "",
+    "short-description": stripRouteNotePromotion(values["short-description"]).slice(0, 180),
+    description: stripRouteNotePromotion(values.description).slice(0, 500),
+    "marketing-hook": "",
+    "distribution-notes": "",
+  };
+}
+
+function getRouteNoteWarnings(rawValues, safeValues) {
+  const warnings = [];
+  const combinedText = [
+    rawValues.title,
+    rawValues.album,
+    rawValues["short-description"],
+    rawValues.description,
+    rawValues.tags,
+    rawValues["marketing-hook"],
+    rawValues["distribution-notes"],
+  ].join(" ");
+
+  if (/[#@]/.test(combinedText) || /https?:\/\//i.test(combinedText) || /\bwww\./i.test(combinedText)) {
+    warnings.push("Removed links, hashtags, handles, or contact-like text from RouteNote-ready metadata.");
+  }
+
+  if (String(rawValues.tags || "").trim()) {
+    warnings.push("Tags are cleared for RouteNote-safe export to avoid SEO stuffing.");
+  }
+
+  if (String(rawValues["marketing-hook"] || "").trim() || String(rawValues["distribution-notes"] || "").trim()) {
+    warnings.push("Marketing hook and distribution notes are excluded from RouteNote-ready export.");
+  }
+
+  if ((rawValues.title || "").trim() !== (safeValues.title || "").trim()) {
+    warnings.push("Track title was normalized to remove artist names, numbering, or forbidden metadata patterns.");
+  }
+
+  if (state.meta.audioStats?.duration && state.meta.audioStats.duration < 30) {
+    warnings.push("RouteNote requires a release length of at least 30 seconds.");
+  }
+
+  if (!state.meta.coverFile && !state.meta.coverDataUrl) {
+    warnings.push("RouteNote artwork requires square JPG cover art, ideally 3000x3000.");
+  }
+
+  return warnings;
+}
+
+function getRouteNoteReadyFields() {
+  return sanitizeRouteNoteFields(getMetaFieldValues());
+}
+
+function getSelectedExportFormat() {
+  const selected = elements.metaExportFormat?.value || "flac";
+  return EXPORT_FORMATS[selected] ? selected : "flac";
+}
+
 function syncStylePresetFromBrief() {
   const styleBriefField = elements.metaFields["meta-style-brief"];
   if (!styleBriefField || !elements.metaStylePreset) {
@@ -277,6 +474,9 @@ function buildCoverPrompt() {
     randomBasePrompt,
     "Bright, luminous, premium album art. Avoid dark, gloomy, muddy, black-dominant, low-energy scenes.",
     "No text, no letters, no words, no logo, no watermark, no typography of any kind.",
+    "No brand marks, no social media or DSP logos, no QR codes, no barcodes, no celebrity likenesses, no physical CD or DVD references.",
+    "Keep the cover safe and distributor-ready: no nudity, gore, hate, threatening imagery, or misleading references to famous artists or companies.",
+    "Artwork must work as a clean square JPG release cover for stores.",
     styleBrief ? `Style brief: ${styleBrief}.` : "",
     description ? `Mood and scene: ${description}.` : "",
   ];
@@ -1337,7 +1537,7 @@ function getProcessedGainDb() {
 }
 
 function buildExportFileName(extension = "wav") {
-  const explicitTitle = elements.metaFields["meta-title"]?.value.trim();
+  const explicitTitle = getRouteNoteReadyFields().title;
   const audioFileName = state.meta.audioFile?.name ? state.meta.audioFile.name.replace(/\.[^.]+$/, "") : "audio";
   const baseName = (explicitTitle || audioFileName || "audio")
     .replace(/[^a-z0-9-_]+/gi, "-")
@@ -1473,8 +1673,9 @@ async function getSourceAudioPayload() {
   }
 
   const audioBase64 = await blobToBase64(state.meta.audioFile);
+  const exportFormat = getSelectedExportFormat();
   return {
-    name: state.meta.audioFile.name || buildExportFileName("mp3"),
+    name: state.meta.audioFile.name || buildExportFileName(EXPORT_FORMATS[exportFormat].extension),
     mimeType: state.meta.audioFile.type || "audio/mpeg",
     dataBase64: audioBase64,
     gainDb: getProcessedGainDb(),
@@ -1487,26 +1688,30 @@ async function exportAudioFile() {
     return;
   }
 
-  setMetaBusy(elements.metaExportAudio, true, "Експортую MP3");
+  const format = getSelectedExportFormat();
+  const formatLabel = EXPORT_FORMATS[format].label;
+
+  setMetaBusy(elements.metaExportAudio, true, `Експортую ${formatLabel}`);
   try {
     const data = await callJsonApi("/api/export-audio", {
+      format,
       audio: await getSourceAudioPayload(),
-      metadata: getMetaFieldValues(),
+      metadata: getRouteNoteReadyFields(),
       cover: await getCoverPayload(),
     });
 
-    const mp3Blob = base64ToBlob(data.audioBase64, data.mimeType || "audio/mpeg");
-    downloadBlob(mp3Blob, data.fileName || buildExportFileName("mp3"));
-    updateMetaPayloadPreview("Processed audio exported as MP3.");
+    const audioBlob = base64ToBlob(data.audioBase64, data.mimeType || EXPORT_FORMATS[format].mimeType);
+    downloadBlob(audioBlob, data.fileName || buildExportFileName(EXPORT_FORMATS[format].extension));
+    updateMetaPayloadPreview(`Processed audio exported as ${formatLabel}.`);
   } catch (error) {
-    elements.metaStatus.textContent = `MP3 export failed: ${error instanceof Error ? error.message : String(error)}`;
+    elements.metaStatus.textContent = `${formatLabel} export failed: ${error instanceof Error ? error.message : String(error)}`;
   } finally {
     setMetaBusy(elements.metaExportAudio, false);
   }
 }
 
 function buildTelegramCaption() {
-  const fields = getMetaFieldValues();
+  const fields = getRouteNoteReadyFields();
   const lines = [
     fields.title ? `${fields.title}` : "New release",
     fields.artist ? `Artist: ${fields.artist}` : "",
@@ -1515,7 +1720,7 @@ function buildTelegramCaption() {
     fields.subgenre ? `Subgenre: ${fields.subgenre}` : "",
     fields.bpm ? `BPM: ${fields.bpm}` : "",
     fields.key ? `Key: ${fields.key}` : "",
-    fields.shortDescription || "",
+    fields["short-description"] || "",
   ].filter(Boolean);
 
   return lines.join("\n").slice(0, 1000);
@@ -1534,7 +1739,7 @@ async function sendToTelegram() {
 
     const data = await callJsonApiWithProgress("/api/send-telegram", {
       channelUrl: "https://t.me/wonchoe_music",
-      metadata: getMetaFieldValues(),
+      metadata: getRouteNoteReadyFields(),
       caption: buildTelegramCaption(),
       audio: await getSourceAudioPayload(),
       cover,
@@ -1565,7 +1770,12 @@ async function sendToTelegram() {
 }
 
 function applyMetaFields(values) {
-  for (const [key, value] of Object.entries(values || {})) {
+  const normalized = sanitizeRouteNoteFields({
+    ...getMetaFieldValues(),
+    ...(values || {}),
+  });
+
+  for (const [key, value] of Object.entries(normalized)) {
     if (Object.hasOwn(LOCKED_META_DEFAULTS, key)) {
       continue;
     }
@@ -1579,8 +1789,21 @@ function applyMetaFields(values) {
 }
 
 function getMetaPayload() {
+  const rawFields = getMetaFieldValues();
+  const safeFields = sanitizeRouteNoteFields(rawFields);
+
   return {
-    ...getMetaFieldValues(),
+    ...safeFields,
+    routeNote: {
+      exportFormat: getSelectedExportFormat(),
+      warnings: getRouteNoteWarnings(rawFields, safeFields),
+      comment: "",
+      artwork: {
+        requiredFormat: "jpg",
+        requiredSize: "3000x3000",
+        maxSizeMb: 25,
+      },
+    },
     audio: state.meta.audioFile
       ? {
           name: state.meta.audioFile.name,
@@ -1791,7 +2014,8 @@ async function aiFillMetadata() {
   try {
     const data = await callJsonApi("/api/ai-fill", {
       styleBrief: elements.metaFields["meta-style-brief"]?.value || "",
-      current: getMetaFieldValues(),
+      stylePreset: elements.metaStylePreset?.value || "",
+      current: getRouteNoteReadyFields(),
       audioStats: state.meta.audioStats,
       fileName: state.meta.audioFile ? state.meta.audioFile.name : null,
     }, { timeoutMs: 90000 });
@@ -1821,12 +2045,13 @@ async function aiGenerateCover() {
       prompt,
       title: elements.metaFields["meta-title"]?.value || "",
       artist: elements.metaFields["meta-artist"]?.value || "",
+      explicit: elements.metaExplicit?.checked || false,
     }, { timeoutMs: 120000 });
 
     if (data.imageBase64) {
-      setCoverPreview(`data:image/png;base64,${data.imageBase64}`);
+      setCoverPreview(`data:${data.mimeType || "image/jpeg"};base64,${data.imageBase64}`);
       state.meta.coverFile = null;
-      elements.metaCoverName.textContent = "AI generated cover";
+      elements.metaCoverName.textContent = data.fileName || "AI generated cover";
       updateMetaPayloadPreview("AI cover generated.");
     } else if (data.imageUrl) {
       setCoverPreview(data.imageUrl);
@@ -1919,6 +2144,7 @@ function bindMetaWorkspace() {
   elements.metaAiFill.addEventListener("click", aiFillMetadata);
   elements.metaAiImage.addEventListener("click", aiGenerateCover);
   elements.metaSendTelegram?.addEventListener("click", sendToTelegram);
+  elements.metaExportFormat?.addEventListener("change", () => updateMetaPayloadPreview("Export format updated."));
   elements.metaExportAudio?.addEventListener("click", exportAudioFile);
 }
 
